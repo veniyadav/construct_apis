@@ -19,12 +19,17 @@ system_prompt = {
         1. Identify the overall sentiment in the review (positive, negative, or mixed).
         2. Extract specific problems or complaints (if any).
         3. Suggest actionable, practical solutions to those problems.
+        4. Emotional tone detection (angry, satisfied, confused, etc.)
+        5. Provide a reply to the customer.
 
         Your output should strictly follow this JSON format:
         {
         "sentiment": "...",
+        "emotional_tone": "...",
         "problems": ["..."],
-        "solutions": ["..."]
+        "solutions": ["..."],
+        "reply": "...",
+        "summary": "...",
         }
         """,           
 }
@@ -44,13 +49,17 @@ def get_prompt():
         combined_prompt += system_prompt["manual"]
     return jsonify({"system_prompt": combined_prompt}), 200
 
+
 @app.route('/api/chat', methods=['POST'])
 @cross_origin()
 def chat():
     data = request.get_json()
+    
+    # Check if the required human_message field is provided
     if not data or "human_message" not in data:
         return jsonify({"error": "Please provide a 'human_message' field in the request body."}), 400
-
+    
+    # If the API_KEY is not set
     if not API_KEY:
         return jsonify({"error": "API key not set. Please set it via /api/set_api_key."}), 500
 
@@ -65,33 +74,31 @@ def chat():
 
     combined_prompt = "\n".join(filter(None, [system_prompt.get("manual")]))
 
-    # # Combine human review and structured form data
-    # full_user_input = f"""
-    # Customer Review: {data['human_message']}
+    # Check if human_message is empty or null
+    human_message = data.get("human_message", "").strip()
+    if not human_message:
+        # If human_message is empty or null, use the language parameter
+        language = data.get("language", "en")  # Default to English if no language is provided
+        full_user_input = f"Please generate a thank-you reply message in {language}."
+    else:
+        # If human_message is provided, use it as is
+        full_user_input = f"Customer Review: {human_message}\n"
     
-    # Structured Feedback (Form Data):
-    # {json.dumps(data['form_data'], indent=2)}
-    # """
-        # Build full input message
-    full_user_input = f"Customer Review: {data['human_message']}\n"
+        # Include form_data if present
+        if "form_data" in data and isinstance(data["form_data"], dict):
+            full_user_input += "\nStructured Feedback (Form Data):\n"
+            full_user_input += json.dumps(data["form_data"], indent=2)
 
-    if "form_data" in data and isinstance(data["form_data"], dict):
-        full_user_input += "\nStructured Feedback (Form Data):\n"
-        full_user_input += json.dumps(data["form_data"], indent=2)
-
-
+    # Create message list
     messages = []
     if combined_prompt:
         messages.append(("system", combined_prompt))
-
-    # messages.append(("human", data["human_message"]))
     messages.append(("human", full_user_input))
-
 
     try:
         ai_response = llm.invoke(messages)
 
-        # Try to extract JSON object from strin
+        # Try to extract JSON object from the response content
         content = ai_response.content
 
         # Extract JSON block using regex (matches everything inside outermost `{}`)
@@ -102,20 +109,8 @@ def chat():
             AI_MSG = {"error": "Could not extract valid JSON from model response."}
     except Exception as e:
         return jsonify({"error": f"Failed to parse LLM response: {e}"}), 500
-
-
-        # try:
-        #     AI_MSG = json.loads(ai_response.content)
-        # except json.JSONDecodeError:
-            # try:
-            #     AI_MSG = ast.literal_eval(ai_response.content)
-            # except Exception:
-            #     AI_MSG = {"raw": ai_response.content}
-    # except Exception as e:
-    #     return jsonify({"error": f"LLM invocation error: {e}"}), 500
-
+    
     return jsonify({"response": AI_MSG}), 200
-
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
