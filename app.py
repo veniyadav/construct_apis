@@ -34,7 +34,7 @@ system_prompt = {
         """,           
 }
 
-API_KEY = "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"
+API_KEY = "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"
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 @app.route('/api/get_prompt', methods=['GET'])
