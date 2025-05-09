@@ -7,7 +7,7 @@ from flask_cors import CORS
 from flask_cors import cross_origin
 import ast 
 import re
-
+from dotenv import load_dotenv
 app = Flask(__name__)
 
 # Global dictionary to store the two prompt components.
@@ -34,7 +34,8 @@ system_prompt = {
         """,           
 }
 
-API_KEY = "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"
+load_dotenv()
+API_KEY = os.getenv("MY_API_KEY")
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 @app.route('/api/get_prompt', methods=['GET'])
@@ -58,10 +59,6 @@ def chat():
     # Check if the required human_message field is provided
     if not data or "human_message" not in data:
         return jsonify({"error": "Please provide a 'human_message' field in the request body."}), 400
-    
-    # If the API_KEY is not set
-    if not API_KEY:
-        return jsonify({"error": "API key not set. Please set it via /api/set_api_key."}), 500
 
     llm = ChatGroq(
         model="llama-3.1-8b-instant",
@@ -80,6 +77,11 @@ def chat():
         # If human_message is empty or null, use the language parameter
         language = data.get("language", "en")  # Default to English if no language is provided
         full_user_input = f"Please generate a thank-you reply message in {language}."
+
+        if "form_data" in data and isinstance(data["form_data"], dict):
+            full_user_input += "\nStructured Feedback (Form Data):\n"
+            full_user_input += json.dumps(data["form_data"], indent=2)
+
     else:
         # If human_message is provided, use it as is
         full_user_input = f"Customer Review: {human_message}\n"
@@ -89,7 +91,7 @@ def chat():
             full_user_input += "\nStructured Feedback (Form Data):\n"
             full_user_input += json.dumps(data["form_data"], indent=2)
 
-    # Create message list
+    # Create message list 
     messages = []
     if combined_prompt:
         messages.append(("system", combined_prompt))
@@ -114,4 +116,3 @@ def chat():
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
-            
